@@ -82,6 +82,35 @@ class StatementImportsControllerTest < ActionDispatch::IntegrationTest
     assert_redirected_to import_upload_url(import)
   end
 
+  test "retry extraction with password" do
+    import = imports(:statement)
+    import.source_file.attach(
+      io: StringIO.new("%PDF-1.4 test"),
+      filename: "statement.pdf",
+      content_type: "application/pdf"
+    )
+    import.update!(pdf_status: "extraction_failed", pdf_error: "This PDF is password-protected. Please provide the password.")
+
+    assert_enqueued_with(job: StatementParseJob) do
+      patch import_upload_url(import), params: {
+        import: { retry: "true", pdf_password: "mysecret" }
+      }
+    end
+
+    import.reload
+    assert_equal "extracting", import.pdf_status
+    assert_equal "mysecret", import.pdf_password
+    assert_redirected_to import_upload_url(import)
+  end
+
+  test "shows password field when error is password-related" do
+    import = imports(:statement)
+    import.update!(pdf_status: "extraction_failed", pdf_error: "This PDF is password-protected. Please provide the password.")
+
+    get import_upload_url(import)
+    assert_response :success
+  end
+
   test "configuration page redirects to clean for statement import" do
     import = imports(:statement)
 

@@ -183,6 +183,47 @@ class StatementImportTest < ActiveSupport::TestCase
     assert_nil @import.pdf_error
   end
 
+  test "retry_extraction stores password when provided" do
+    @import.source_file.attach(
+      io: StringIO.new("%PDF-1.4 test"),
+      filename: "statement.pdf",
+      content_type: "application/pdf"
+    )
+    @import.update!(pdf_status: "extraction_failed", pdf_error: "This PDF is password-protected")
+
+    assert_enqueued_with(job: StatementParseJob, args: [@import]) do
+      @import.retry_extraction(password: "secret123")
+    end
+
+    assert_equal "secret123", @import.reload.pdf_password
+  end
+
+  test "password_required? returns true when error mentions password" do
+    @import.update!(pdf_status: "extraction_failed", pdf_error: "This PDF is password-protected. Please provide the password.")
+    assert @import.password_required?
+  end
+
+  test "password_required? returns false for other errors" do
+    @import.update!(pdf_status: "extraction_failed", pdf_error: "Could not extract text from PDF.")
+    refute @import.password_required?
+  end
+
+  test "password_required? returns false when not failed" do
+    @import.update!(pdf_status: "extracted")
+    refute @import.password_required?
+  end
+
+  test "clear_pdf_password! removes stored password" do
+    @import.update!(pdf_password: "secret123")
+    @import.clear_pdf_password!
+    assert_nil @import.reload.pdf_password
+  end
+
+  test "clear_pdf_password! does nothing when no password" do
+    @import.clear_pdf_password!
+    assert_nil @import.reload.pdf_password
+  end
+
   test "skips CSV-specific validations" do
     import = StatementImport.new(
       family: @family,

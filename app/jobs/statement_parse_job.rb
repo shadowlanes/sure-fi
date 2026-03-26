@@ -18,6 +18,10 @@ class StatementParseJob < ApplicationJob
     import.generate_rows_from_pdf(transactions)
     import.sync_mappings
     import.update!(pdf_status: "extracted")
+
+    import.clear_pdf_password!
+  rescue PDF::Reader::EncryptedPDFError
+    import.update!(pdf_status: "extraction_failed", pdf_error: "This PDF is password-protected. Please provide the password.")
   rescue => e
     Rails.logger.error("StatementParseJob failed for import #{import.id}: #{e.message}")
     import.update!(pdf_status: "extraction_failed", pdf_error: e.message)

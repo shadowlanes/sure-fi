@@ -58,7 +58,8 @@ class Import::UploadsController < ApplicationController
 
     def handle_statement_upload
       if params.dig(:import, :retry).present?
-        @import.retry_extraction
+        password = params.dig(:import, :pdf_password)
+        @import.retry_extraction(password: password)
         redirect_to import_upload_path(@import), notice: "Retrying statement analysis..."
         return
       end

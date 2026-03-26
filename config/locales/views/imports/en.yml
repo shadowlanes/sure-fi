@@ -79,6 +79,9 @@ en:
         statement_browse: Browse
         statement_browse_suffix: to add your PDF statement here
         statement_submit: Upload & Analyze
+        statement_password_label: PDF Password
+        statement_password_placeholder: Enter the password for this PDF
+        statement_unlock_and_retry: Unlock & Retry
   imports:
     empty:
       message: No imports yet.

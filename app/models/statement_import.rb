@@ -16,7 +16,9 @@ class StatementImport < Import
 
   def extract_pdf_text
     tempfile = source_file.blob.open
-    reader = PDF::Reader.new(tempfile)
+    reader_opts = {}
+    reader_opts[:password] = pdf_password if pdf_password.present?
+    reader = PDF::Reader.new(tempfile, reader_opts)
 
     text = reader.pages.map(&:text).join("\n--- PAGE BREAK ---\n")
     tempfile.close
@@ -51,11 +53,19 @@ class StatementImport < Import
     StatementParseJob.perform_later(self)
   end
 
-  def retry_extraction
-    update!(pdf_status: nil, pdf_error: nil, pdf_text: nil)
+  def retry_extraction(password: nil)
+    update!(pdf_status: nil, pdf_error: nil, pdf_text: nil, pdf_password: password)
     rows.destroy_all
     update_column(:rows_count, 0)
     parse_later
+  end
+
+  def password_required?
+    pdf_status == "extraction_failed" && pdf_error&.include?("password")
+  end
+
+  def clear_pdf_password!
+    update_column(:pdf_password, nil) if pdf_password.present?
   end
 
   def required_column_keys
