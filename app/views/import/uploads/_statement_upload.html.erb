@@ -31,18 +31,37 @@
         <p class="text-destructive text-sm"><%= import.pdf_error %></p>
       </div>
 
-      <div class="flex justify-center gap-3">
-        <%= button_to import_upload_path(import),
-              method: :patch,
-              params: { import: { retry: true } },
-              class: "btn btn--primary" do %>
-          <%= t("import.uploads.show.statement_retry") %>
-        <% end %>
+      <% if import.password_required? %>
+        <%= styled_form_with model: import, scope: :import, url: import_upload_path(import), method: :patch, class: "space-y-4 max-w-sm mx-auto text-left" do |form| %>
+          <%= form.hidden_field :retry, value: true %>
 
-        <%= link_to t("import.uploads.show.statement_upload_different"),
-              imports_path,
-              class: "btn btn--outline" %>
-      </div>
+          <%= form.password_field :pdf_password,
+                label: t("import.uploads.show.statement_password_label"),
+                placeholder: t("import.uploads.show.statement_password_placeholder"),
+                required: true,
+                autofocus: true %>
+
+          <div class="flex gap-3">
+            <%= form.submit t("import.uploads.show.statement_unlock_and_retry"), class: "btn btn--primary flex-1" %>
+            <%= link_to t("import.uploads.show.statement_upload_different"),
+                  imports_path,
+                  class: "btn btn--outline" %>
+          </div>
+        <% end %>
+      <% else %>
+        <div class="flex justify-center gap-3">
+          <%= button_to import_upload_path(import),
+                method: :patch,
+                params: { import: { retry: true } },
+                class: "btn btn--primary" do %>
+            <%= t("import.uploads.show.statement_retry") %>
+          <% end %>
+
+          <%= link_to t("import.uploads.show.statement_upload_different"),
+                imports_path,
+                class: "btn btn--outline" %>
+        </div>
+      <% end %>
     </div>
 
   <% else %>

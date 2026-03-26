@@ -61,6 +61,35 @@ class StatementParseJobTest < ActiveJob::TestCase
     assert_includes @import.pdf_error, "OpenAI"
   end
 
+  test "handles encrypted PDF with specific error message" do
+    @import.expects(:extract_pdf_text).raises(PDF::Reader::EncryptedPDFError)
+
+    StatementParseJob.perform_now(@import)
+
+    @import.reload
+    assert_equal "extraction_failed", @import.pdf_status
+    assert_includes @import.pdf_error, "password-protected"
+  end
+
+  test "clears password after successful extraction" do
+    @import.update!(pdf_password: "secret123")
+
+    mock_transactions = [
+      { "date" => "2025-01-15", "amount" => "-45.99", "currency" => "USD", "name" => "Grocery", "category" => "", "notes" => "" }
+    ]
+
+    @import.expects(:extract_pdf_text).returns("Sample text")
+    provider = mock("provider")
+    provider.expects(:parse_statement).returns(mock_transactions)
+    Provider::Registry.expects(:get_provider).with(:openai).returns(provider)
+
+    StatementParseJob.perform_now(@import)
+
+    @import.reload
+    assert_equal "extracted", @import.pdf_status
+    assert_nil @import.pdf_password
+  end
+
   test "stores pdf_text for debugging" do
     pdf_text = "Bank Statement\nDate Amount Description\n2025-01-15 -45.99 Grocery"
 
