@@ -68,6 +68,17 @@ en:
         instructions_4: Columns marked with an asterisk (*) are required data.
         instructions_5: No commas, no currency symbols, and no parentheses in numbers.
         title: Import your data
+        statement_title: Upload your bank statement
+        statement_description: Upload a PDF bank statement. We'll use AI to extract your transactions automatically.
+        statement_processing: Analyzing your statement...
+        statement_processing_description: We're extracting transactions from your PDF. This usually takes 15-30 seconds.
+        statement_failed: Failed to extract transactions
+        statement_retry: Try again
+        statement_upload_different: Back to imports
+        statement_account_label: Account
+        statement_browse: Browse
+        statement_browse_suffix: to add your PDF statement here
+        statement_submit: Upload & Analyze
   imports:
     empty:
       message: No imports yet.
@@ -98,9 +109,17 @@ en:
       import_portfolio: Import investments
       import_rules: Import rules
       import_transactions: Import transactions
+      import_statement: Import bank statement (PDF)
       resume: Resume %{type}
       sources: Sources
       title: New CSV Import
+    create:
+      csv_too_large: "File is too large. Maximum size is %{max}MB."
+      invalid_csv_type: "Invalid file type. Please upload a CSV file."
+      csv_uploaded: "CSV uploaded successfully."
+      pdf_too_large: "File is too large. Maximum size is %{max}MB."
+      invalid_pdf_type: "Invalid file type. Please upload a PDF file."
+      pdf_processing: "PDF uploaded. Analyzing your statement..."
     ready:
       description: Here's a summary of the new items that will be added to your account
         once you publish this import.

@@ -84,6 +84,30 @@ class Provider::Openai < Provider
     end
   end
 
+  def parse_statement(pdf_text:, model: "", family: nil)
+    with_provider_response do
+      effective_model = model.presence || @default_model
+
+      trace = create_langfuse_trace(
+        name: "openai.parse_statement",
+        input: { pdf_text_length: pdf_text.length }
+      )
+
+      result = StatementParser.new(
+        client,
+        model: effective_model,
+        pdf_text: pdf_text,
+        custom_provider: custom_provider?,
+        langfuse_trace: trace,
+        family: family
+      ).parse_statement
+
+      trace&.update(output: { transaction_count: result.size })
+
+      result
+    end
+  end
+
   def auto_detect_merchants(transactions: [], user_merchants: [], model: "", family: nil, json_mode: nil)
     with_provider_response do
       raise Error, "Too many transactions to auto-detect merchants. Max is 25 per request." if transactions.size > 25

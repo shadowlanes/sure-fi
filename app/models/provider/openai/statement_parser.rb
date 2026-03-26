@@ -1,0 +1,233 @@
+class Provider::Openai::StatementParser
+  include Provider::Openai::Concerns::UsageRecorder
+
+  MAX_TEXT_LENGTH = 30_000
+
+  attr_reader :client, :model, :pdf_text, :custom_provider, :langfuse_trace, :family
+
+  def initialize(client, model:, pdf_text:, custom_provider: false, langfuse_trace: nil, family: nil)
+    @client = client
+    @model = model
+    @pdf_text = pdf_text
+    @custom_provider = custom_provider
+    @langfuse_trace = langfuse_trace
+    @family = family
+  end
+
+  def parse_statement
+    if pdf_text.length <= MAX_TEXT_LENGTH
+      parse_chunk(pdf_text)
+    else
+      parse_in_chunks
+    end
+  end
+
+  private
+
+    def parse_in_chunks
+      pages = pdf_text.split("--- PAGE BREAK ---")
+      chunks = []
+      current_chunk = ""
+
+      pages.each do |page|
+        if current_chunk.length + page.length > MAX_TEXT_LENGTH && current_chunk.present?
+          chunks << current_chunk
+          current_chunk = page
+        else
+          current_chunk += "\n--- PAGE BREAK ---\n" if current_chunk.present?
+          current_chunk += page
+        end
+      end
+      chunks << current_chunk if current_chunk.present?
+
+      chunks.flat_map { |chunk| parse_chunk(chunk) }
+    end
+
+    def parse_chunk(text)
+      if custom_provider
+        parse_chunk_generic(text)
+      else
+        parse_chunk_native(text)
+      end
+    end
+
+    def parse_chunk_native(text)
+      span = langfuse_trace&.span(name: "parse_statement_api_call", input: {
+        model: model, text_length: text.length
+      })
+
+      response = client.responses.create(parameters: {
+        model: model,
+        input: [ { role: "user", content: user_message(text) } ],
+        instructions: instructions,
+        text: {
+          format: {
+            type: "json_schema",
+            name: "parse_bank_statement_transactions",
+            strict: true,
+            schema: json_schema
+          }
+        }
+      })
+
+      transactions = extract_transactions_native(response)
+
+      record_usage(
+        model,
+        response.dig("usage"),
+        operation: "parse_statement",
+        metadata: { text_length: text.length, transaction_count: transactions.size }
+      )
+
+      span&.end(output: { transaction_count: transactions.size }, usage: response.dig("usage"))
+      transactions
+    rescue => e
+      span&.end(output: { error: e.message }, level: "ERROR")
+      raise
+    end
+
+    def parse_chunk_generic(text)
+      span = langfuse_trace&.span(name: "parse_statement_api_call", input: {
+        model: model, text_length: text.length
+      })
+
+      params = {
+        model: model,
+        messages: [
+          { role: "system", content: instructions },
+          { role: "user", content: user_message(text) }
+        ],
+        response_format: { type: "json_object" }
+      }
+
+      response = client.chat(parameters: params)
+
+      raw = response.dig("choices", 0, "message", "content")
+      parsed = parse_json_flexibly(raw)
+      transactions = normalize_transactions(parsed)
+
+      record_usage(
+        model,
+        response.dig("usage"),
+        operation: "parse_statement",
+        metadata: { text_length: text.length, transaction_count: transactions.size }
+      )
+
+      span&.end(output: { transaction_count: transactions.size }, usage: response.dig("usage"))
+      transactions
+    rescue => e
+      span&.end(output: { error: e.message }, level: "ERROR")
+      raise
+    end
+
+    def instructions
+      <<~INSTRUCTIONS.strip
+        You are a financial document parser specializing in bank statements. Your job is to extract
+        every transaction from the provided bank statement text.
+
+        For each transaction, return:
+        - date: in ISO 8601 format (YYYY-MM-DD)
+        - amount: as a signed decimal number (positive for deposits/credits, negative for withdrawals/debits). No currency symbols.
+        - currency: ISO 4217 currency code (e.g., "USD", "EUR", "GBP", "INR", "JPY").
+          Extract from the transaction line, statement header, or account details.
+          Return empty string only if truly indeterminate.
+        - name: the transaction description or payee name
+        - category: your best guess at a spending category (e.g., "Groceries", "Restaurants", "Salary", "Utilities", "Transfer"), or empty string if unclear
+        - notes: reference numbers, check numbers, or other details. Empty string if none.
+
+        Rules:
+        - Extract EVERY transaction line. Do not skip any.
+        - Do NOT include opening balances, closing balances, summary totals, or interest accrual summaries as transactions
+          UNLESS they represent an actual charge or credit to the account.
+        - Dates must be valid calendar dates within the statement period.
+        - If the statement shows transactions in multiple currencies, use the correct currency for each.
+        - If all transactions share one currency, use the currency from the statement header or account info.
+        - Return valid JSON only. No explanations.
+      INSTRUCTIONS
+    end
+
+    def user_message(text)
+      <<~MESSAGE.strip
+        Extract all transactions from this bank statement:
+
+        #{text}
+      MESSAGE
+    end
+
+    def json_schema
+      {
+        type: "object",
+        properties: {
+          transactions: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                date: { type: "string", description: "ISO 8601 date (YYYY-MM-DD)" },
+                amount: { type: "string", description: "Signed decimal amount" },
+                currency: { type: "string", description: "ISO 4217 currency code or empty string" },
+                name: { type: "string", description: "Transaction description" },
+                category: { type: "string", description: "Spending category or empty string" },
+                notes: { type: "string", description: "Additional notes or empty string" }
+              },
+              required: %w[date amount currency name category notes],
+              additionalProperties: false
+            }
+          }
+        },
+        required: %w[transactions],
+        additionalProperties: false
+      }
+    end
+
+    def extract_transactions_native(response)
+      message_output = response["output"]&.find { |o| o["type"] == "message" }
+      raw = message_output&.dig("content", 0, "text")
+
+      raise Provider::Openai::Error, "No message content found in response" if raw.nil?
+
+      parsed = JSON.parse(raw)
+      normalize_transactions(parsed)
+    rescue JSON::ParserError => e
+      raise Provider::Openai::Error, "Invalid JSON in statement parse response: #{e.message}"
+    end
+
+    def normalize_transactions(parsed)
+      txns = parsed["transactions"] || parsed["results"] || (parsed.is_a?(Array) ? parsed : [])
+
+      txns.filter_map do |txn|
+        date = txn["date"].to_s.strip
+        amount = txn["amount"].to_s.strip
+        name = txn["name"].to_s.strip
+
+        next if date.blank? || amount.blank?
+
+        {
+          date: date,
+          amount: amount,
+          currency: txn["currency"].to_s.strip,
+          name: name.presence || "Imported item",
+          category: txn["category"].to_s.strip,
+          notes: txn["notes"].to_s.strip
+        }
+      end
+    end
+
+    def parse_json_flexibly(raw)
+      return {} if raw.blank?
+
+      cleaned = raw.gsub(/<think>[\s\S]*?<\/think>/m, "").strip
+
+      JSON.parse(cleaned)
+    rescue JSON::ParserError
+      if cleaned =~ /```(?:json)?\s*(\{[\s\S]*?\})\s*```/m
+        return JSON.parse($1)
+      end
+
+      if cleaned =~ /(\{[\s\S]*\})/m
+        return JSON.parse($1)
+      end
+
+      raise Provider::Openai::Error, "Could not parse JSON from statement parse response"
+    end
+end
