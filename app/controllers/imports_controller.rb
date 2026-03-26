@@ -36,32 +36,19 @@ class ImportsController < ApplicationController
       date_format: Current.family.date_format,
     )
 
-    if import_params[:csv_file].present?
-      file = import_params[:csv_file]
-
-      if file.size > Import::MAX_CSV_SIZE
-        import.destroy
-        redirect_to new_import_path, alert: "File is too large. Maximum size is #{Import::MAX_CSV_SIZE / 1.megabyte}MB."
-        return
-      end
-
-      unless Import::ALLOWED_MIME_TYPES.include?(file.content_type)
-        import.destroy
-        redirect_to new_import_path, alert: "Invalid file type. Please upload a CSV file."
-        return
-      end
-
-      # Stream reading is not fully applicable here as we store the raw string in the DB,
-      # but we have validated size beforehand to prevent memory exhaustion from massive files.
-      import.update!(raw_file_str: file.read)
-      redirect_to import_configuration_path(import), notice: "CSV uploaded successfully."
+    if import.is_a?(StatementImport)
+      handle_statement_import_create(import)
+    elsif import_params[:csv_file].present?
+      handle_csv_upload(import)
     else
       redirect_to import_upload_path(import)
     end
   end
 
   def show
-    if !@import.uploaded?
+    if @import.is_a?(StatementImport) && @import.pdf_status.in?(%w[extracting extraction_failed])
+      redirect_to import_upload_path(@import)
+    elsif !@import.uploaded?
       redirect_to import_upload_path(@import), alert: "Please finalize your file upload."
     elsif !@import.publishable?
       redirect_to import_confirm_path(@import), alert: "Please finalize your mappings before proceeding."
@@ -94,6 +81,50 @@ class ImportsController < ApplicationController
     end
 
     def import_params
-      params.require(:import).permit(:csv_file)
+      params.require(:import).permit(:csv_file, :pdf_file)
+    end
+
+    def handle_csv_upload(import)
+      file = import_params[:csv_file]
+
+      if file.size > Import::MAX_CSV_SIZE
+        import.destroy
+        redirect_to new_import_path, alert: t("imports.create.csv_too_large", max: Import::MAX_CSV_SIZE / 1.megabyte)
+        return
+      end
+
+      unless Import::ALLOWED_MIME_TYPES.include?(file.content_type)
+        import.destroy
+        redirect_to new_import_path, alert: t("imports.create.invalid_csv_type")
+        return
+      end
+
+      import.update!(raw_file_str: file.read)
+      redirect_to import_configuration_path(import), notice: t("imports.create.csv_uploaded")
+    end
+
+    def handle_statement_import_create(import)
+      file = import_params[:pdf_file]
+
+      unless file.present?
+        redirect_to import_upload_path(import)
+        return
+      end
+
+      if file.size > StatementImport::MAX_PDF_SIZE
+        import.destroy
+        redirect_to new_import_path, alert: t("imports.create.pdf_too_large", max: StatementImport::MAX_PDF_SIZE / 1.megabyte)
+        return
+      end
+
+      unless StatementImport::ALLOWED_PDF_TYPES.include?(file.content_type)
+        import.destroy
+        redirect_to new_import_path, alert: t("imports.create.invalid_pdf_type")
+        return
+      end
+
+      import.source_file.attach(file)
+      import.parse_later
+      redirect_to import_upload_path(import), notice: t("imports.create.pdf_processing")
     end
 end

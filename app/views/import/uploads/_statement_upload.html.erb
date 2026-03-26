@@ -1,0 +1,92 @@
+<%# locals: (import:) %>
+
+<div class="space-y-4 mx-auto max-w-md">
+  <% if import.pdf_status == "extracting" %>
+    <%# Polling: auto-refresh this page every 3 seconds while extracting %>
+    <meta http-equiv="refresh" content="3">
+
+    <div class="text-center space-y-4 py-12">
+      <div class="flex justify-center">
+        <div class="animate-spin text-teal-500">
+          <%= icon("loader", size: "xl", color: "current") %>
+        </div>
+      </div>
+
+      <div class="space-y-2">
+        <h1 class="text-3xl text-primary font-medium"><%= t("import.uploads.show.statement_processing") %></h1>
+        <p class="text-secondary text-sm"><%= t("import.uploads.show.statement_processing_description") %></p>
+      </div>
+    </div>
+
+  <% elsif import.pdf_status == "extraction_failed" %>
+    <div class="text-center space-y-4 py-12">
+      <div class="flex justify-center">
+        <div class="text-destructive">
+          <%= icon("circle-x", size: "xl", color: "current") %>
+        </div>
+      </div>
+
+      <div class="space-y-2">
+        <h1 class="text-3xl text-primary font-medium"><%= t("import.uploads.show.statement_failed") %></h1>
+        <p class="text-destructive text-sm"><%= import.pdf_error %></p>
+      </div>
+
+      <div class="flex justify-center gap-3">
+        <%= button_to import_upload_path(import),
+              method: :patch,
+              params: { import: { retry: true } },
+              class: "btn btn--primary" do %>
+          <%= t("import.uploads.show.statement_retry") %>
+        <% end %>
+
+        <%= link_to t("import.uploads.show.statement_upload_different"),
+              imports_path,
+              class: "btn btn--outline" %>
+      </div>
+    </div>
+
+  <% else %>
+    <%# Initial upload state %>
+    <div class="text-center space-y-2">
+      <h1 class="text-3xl text-primary font-medium"><%= t("import.uploads.show.statement_title") %></h1>
+      <p class="text-secondary text-sm"><%= t("import.uploads.show.statement_description") %></p>
+    </div>
+
+    <%= styled_form_with model: import, scope: :import, url: import_upload_path(import), multipart: true, class: "space-y-4" do |form| %>
+      <%= form.select :account_id,
+            import.family.accounts.visible.pluck(:name, :id),
+            { label: t("import.uploads.show.statement_account_label"), selected: import.account_id },
+            { required: true } %>
+
+      <div class="flex flex-col items-center justify-center w-full h-64 border border-secondary border-dashed rounded-xl cursor-pointer"
+           data-controller="file-upload"
+           data-action="click->file-upload#triggerFileInput"
+           data-file-upload-target="uploadArea">
+        <div class="flex flex-col items-center justify-center pt-5 pb-6">
+          <div data-file-upload-target="uploadText" class="flex flex-col items-center">
+            <%= icon("plus", size: "lg", class: "mb-4 mx-auto") %>
+            <p class="mb-2 text-md text-gray text-center">
+              <span class="font-medium text-primary"><%= t("import.uploads.show.statement_browse") %></span>
+              <%= t("import.uploads.show.statement_browse_suffix") %>
+            </p>
+            <p class="text-xs text-secondary">PDF files up to 20MB</p>
+          </div>
+
+          <div class="flex flex-col gap-4 items-center hidden mb-2" data-file-upload-target="fileName">
+            <span class="text-teal-500">
+              <%= icon("file-text", size: "lg", color: "current") %>
+            </span>
+            <p class="text-md font-medium text-primary"></p>
+          </div>
+
+          <%= form.file_field :pdf_file,
+                accept: "application/pdf",
+                class: "hidden",
+                "data-file-upload-target": "input" %>
+        </div>
+      </div>
+
+      <%= form.submit t("import.uploads.show.statement_submit"), class: "btn btn--primary w-full" %>
+    <% end %>
+  <% end %>
+</div>

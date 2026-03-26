@@ -4,6 +4,9 @@ class Import::ConfigurationsController < ApplicationController
   before_action :set_import
 
   def show
+    if @import.is_a?(StatementImport)
+      redirect_to import_clean_path(@import)
+    end
   end
 
   def update

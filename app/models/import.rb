@@ -5,7 +5,7 @@ class Import < ApplicationRecord
   MAX_CSV_SIZE = 10.megabytes
   ALLOWED_MIME_TYPES = %w[text/csv text/plain application/vnd.ms-excel application/csv].freeze
 
-  TYPES = %w[TransactionImport TradeImport AccountImport MintImport CategoryImport RuleImport].freeze
+  TYPES = %w[TransactionImport TradeImport AccountImport MintImport CategoryImport RuleImport StatementImport].freeze
   SIGNAGE_CONVENTIONS = %w[inflows_positive inflows_negative]
   SEPARATORS = [ [ "Comma (,)", "," ], [ "Semicolon (;)", ";" ] ].freeze
 
@@ -20,6 +20,8 @@ class Import < ApplicationRecord
 
   belongs_to :family
   belongs_to :account, optional: true
+
+  has_one_attached :source_file
 
   before_validation :set_default_number_format
   before_validation :ensure_utf8_encoding
@@ -36,13 +38,13 @@ class Import < ApplicationRecord
   }, validate: true, default: "pending"
 
   validates :type, inclusion: { in: TYPES }
-  validates :amount_type_strategy, inclusion: { in: AMOUNT_TYPE_STRATEGIES }
-  validates :col_sep, inclusion: { in: SEPARATORS.map(&:last) }
+  validates :amount_type_strategy, inclusion: { in: AMOUNT_TYPE_STRATEGIES }, unless: :statement_import?
+  validates :col_sep, inclusion: { in: SEPARATORS.map(&:last) }, unless: :statement_import?
   validates :signage_convention, inclusion: { in: SIGNAGE_CONVENTIONS }, allow_nil: true
-  validates :number_format, presence: true, inclusion: { in: NUMBER_FORMATS.keys }
-  validates :rows_to_skip, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validates :number_format, presence: true, inclusion: { in: NUMBER_FORMATS.keys }, unless: :statement_import?
+  validates :rows_to_skip, numericality: { only_integer: true, greater_than_or_equal_to: 0 }, unless: :statement_import?
   validate :account_belongs_to_family
-  validate :rows_to_skip_within_file_bounds
+  validate :rows_to_skip_within_file_bounds, unless: :statement_import?
 
   has_many :rows, dependent: :destroy
   has_many :mappings, dependent: :destroy
@@ -202,6 +204,10 @@ class Import < ApplicationRecord
 
   def revertable?
     complete? || revert_failed?
+  end
+
+  def statement_import?
+    is_a?(StatementImport)
   end
 
   def has_unassigned_account?

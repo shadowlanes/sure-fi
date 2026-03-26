@@ -4,6 +4,9 @@ class Import::UploadsController < ApplicationController
   before_action :set_import
 
   def show
+    if @import.is_a?(StatementImport) && @import.pdf_status == "extracted"
+      redirect_to import_clean_path(@import)
+    end
   end
 
   def sample_csv
@@ -14,7 +17,9 @@ class Import::UploadsController < ApplicationController
   end
 
   def update
-    if csv_valid?(csv_str)
+    if @import.is_a?(StatementImport)
+      handle_statement_upload
+    elsif csv_valid?(csv_str)
       @import.account = Current.family.accounts.find_by(id: params.dig(:import, :account_id))
       @import.assign_attributes(raw_file_str: csv_str, col_sep: upload_params[:col_sep])
       @import.save!(validate: false)
@@ -48,6 +53,38 @@ class Import::UploadsController < ApplicationController
     end
 
     def upload_params
-      params.require(:import).permit(:raw_file_str, :csv_file, :col_sep)
+      params.require(:import).permit(:raw_file_str, :csv_file, :pdf_file, :col_sep, :account_id)
+    end
+
+    def handle_statement_upload
+      if params.dig(:import, :retry).present?
+        @import.retry_extraction
+        redirect_to import_upload_path(@import), notice: "Retrying statement analysis..."
+        return
+      end
+
+      file = upload_params[:pdf_file]
+
+      unless file.present?
+        flash.now[:alert] = "Please upload a PDF file"
+        render :show, status: :unprocessable_entity
+        return
+      end
+
+      if file.size > StatementImport::MAX_PDF_SIZE
+        flash.now[:alert] = "File is too large. Maximum size is #{StatementImport::MAX_PDF_SIZE / 1.megabyte}MB."
+        render :show, status: :unprocessable_entity
+        return
+      end
+
+      unless StatementImport::ALLOWED_PDF_TYPES.include?(file.content_type)
+        flash.now[:alert] = "Invalid file type. Please upload a PDF file."
+        render :show, status: :unprocessable_entity
+        return
+      end
+
+      @import.source_file.attach(file)
+      @import.parse_later
+      redirect_to import_upload_path(@import), notice: "PDF uploaded. Analyzing your statement..."
     end
 end
