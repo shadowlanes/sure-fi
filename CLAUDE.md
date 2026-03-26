@@ -164,6 +164,7 @@ Sidekiq handles asynchronous tasks:
 - Test helpers in `test/support/` for common scenarios
 - Only test critical code paths that significantly increase confidence
 - Write tests as you go, when required
+- **NEVER skip writing tests. Write and run tests after EACH implementation step before moving to the next. If the test suite is broken, fix it first.**
 
 ### Performance Considerations
 - Database queries optimized with proper indexes

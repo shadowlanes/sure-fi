@@ -4,7 +4,7 @@ class StatementImport < Import
 
   after_create :set_defaults
 
-  validates :account, presence: true
+  validate :account_required_for_publish
 
   def uploaded?
     source_file.attached?
@@ -127,6 +127,12 @@ class StatementImport < Import
   end
 
   private
+    def account_required_for_publish
+      if source_file.attached? && account.nil?
+        errors.add(:account, "is required for statement imports")
+      end
+    end
+
     def set_defaults
       self.signage_convention = "inflows_positive"
       self.date_format = "%Y-%m-%d"
