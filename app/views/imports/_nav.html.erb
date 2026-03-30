@@ -5,6 +5,9 @@
   (unless import.statement_import?
     { name: "Configure", path: import_configuration_path(import), is_complete: import.configured?, step_number: 2 }
   end),
+  (if import.statement_import?
+    { name: "Account", path: import_account_review_path(import), is_complete: import.account_confirmed?, step_number: 2 }
+  end),
   { name: "Clean", path: import_clean_path(import), is_complete: import.cleaned?, step_number: 3 },
   { name: "Map", path: import_confirm_path(import), is_complete: import.publishable?, step_number: 4 },
   { name: "Confirm", path: import_path(import), is_complete: import.complete?, step_number: 5 }

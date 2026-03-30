@@ -12,6 +12,7 @@ class Provider::Openai::StatementParser
     @family = family
   end
 
+  # Returns { account: { ... }, transactions: [ ... ] }
   def parse_statement
     if custom_provider
       parse_with_vision_generic
@@ -49,17 +50,17 @@ class Provider::Openai::StatementParser
         }
       })
 
-      transactions = extract_transactions_native(response)
+      result = extract_result_native(response)
 
       record_usage(
         model,
         response.dig("usage"),
         operation: "parse_statement",
-        metadata: { pdf_size: pdf_base64.length, transaction_count: transactions.size }
+        metadata: { pdf_size: pdf_base64.length, transaction_count: result[:transactions].size }
       )
 
-      span&.end(output: { transaction_count: transactions.size }, usage: response.dig("usage"))
-      transactions
+      span&.end(output: { transaction_count: result[:transactions].size }, usage: response.dig("usage"))
+      result
     rescue => e
       span&.end(output: { error: e.message }, level: "ERROR")
       raise
@@ -98,8 +99,9 @@ class Provider::Openai::StatementParser
       raw = response.dig("choices", 0, "message", "content")
       Rails.logger.info("StatementParser raw LLM response (first 2000 chars): #{raw.to_s[0..2000]}")
       parsed = parse_json_flexibly(raw)
+      account_info = extract_account_info(parsed)
       transactions = normalize_transactions(parsed)
-      Rails.logger.info("StatementParser extracted #{transactions.size} transactions")
+      Rails.logger.info("StatementParser extracted #{transactions.size} transactions, account: #{account_info.inspect}")
 
       record_usage(
         model,
@@ -109,7 +111,7 @@ class Provider::Openai::StatementParser
       )
 
       span&.end(output: { transaction_count: transactions.size }, usage: response.dig("usage"))
-      transactions
+      { account: account_info, transactions: transactions }
     rescue => e
       span&.end(output: { error: e.message }, level: "ERROR")
       raise
@@ -118,9 +120,17 @@ class Provider::Openai::StatementParser
     def instructions
       <<~INSTRUCTIONS.strip
         You are a financial document parser specializing in bank statements. Your job is to extract
-        every transaction from the provided bank statement PDF.
+        account information and every transaction from the provided bank statement PDF.
 
-        For each transaction, return:
+        Return a JSON object with two keys: "account" and "transactions".
+
+        For "account", return:
+        - bank_name: the name of the bank or financial institution (e.g., "Emirates NBD", "HDFC Bank", "Chase")
+        - account_number: the last 4 digits of the account number, or the full account number if visible. Empty string if not found.
+        - account_type: one of "checking", "savings", "credit_card", or "other"
+        - currency: the primary ISO 4217 currency code for the account (e.g., "USD", "AED", "INR")
+
+        For each transaction in "transactions", return:
         - date: in ISO 8601 format (YYYY-MM-DD)
         - amount: as a signed decimal number (positive for deposits/credits, negative for withdrawals/debits). No currency symbols.
         - currency: ISO 4217 currency code (e.g., "USD", "EUR", "GBP", "INR", "JPY").
@@ -146,6 +156,17 @@ class Provider::Openai::StatementParser
       {
         type: "object",
         properties: {
+          account: {
+            type: "object",
+            properties: {
+              bank_name: { type: "string", description: "Bank or institution name" },
+              account_number: { type: "string", description: "Last 4 digits or full account number" },
+              account_type: { type: "string", description: "checking, savings, credit_card, or other" },
+              currency: { type: "string", description: "Primary ISO 4217 currency code" }
+            },
+            required: %w[bank_name account_number account_type currency],
+            additionalProperties: false
+          },
           transactions: {
             type: "array",
             items: {
@@ -163,21 +184,36 @@ class Provider::Openai::StatementParser
             }
           }
         },
-        required: %w[transactions],
+        required: %w[account transactions],
         additionalProperties: false
       }
     end
 
-    def extract_transactions_native(response)
+    def extract_result_native(response)
       message_output = response["output"]&.find { |o| o["type"] == "message" }
       raw = message_output&.dig("content", 0, "text")
 
       raise Provider::Openai::Error, "No message content found in response" if raw.nil?
 
       parsed = JSON.parse(raw)
-      normalize_transactions(parsed)
+      { account: extract_account_info(parsed), transactions: normalize_transactions(parsed) }
     rescue JSON::ParserError => e
       raise Provider::Openai::Error, "Invalid JSON in statement parse response: #{e.message}"
+    end
+
+    def extract_account_info(parsed)
+      acct = if parsed.is_a?(Hash)
+        parsed["account"] || {}
+      else
+        {}
+      end
+
+      {
+        bank_name: acct["bank_name"].to_s.strip.presence,
+        account_number: acct["account_number"].to_s.strip.presence,
+        account_type: acct["account_type"].to_s.strip.presence,
+        currency: acct["currency"].to_s.strip.presence
+      }
     end
 
     def normalize_transactions(parsed)

@@ -102,7 +102,7 @@ class Provider::Openai < Provider
         family: family
       ).parse_statement
 
-      trace&.update(output: { transaction_count: result.size })
+      trace&.update(output: { transaction_count: result[:transactions].size, account: result[:account] })
 
       result
     end

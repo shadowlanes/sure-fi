@@ -9,6 +9,23 @@ en:
         errors_notice_mobile: You have errors in your data.  Tap over the error tooltip to see
           details.
         title: Clean your data
+    account_reviews:
+      show:
+        title: Select account
+        description: We detected the following account from your statement. Choose an existing account or create a new one.
+        detected_heading: Detected from statement
+        bank_label: Bank
+        account_number_label: Account
+        type_label: Type
+        currency_label: Currency
+        transactions_found:
+          one: "%{count} transaction found"
+          other: "%{count} transactions found"
+        use_existing: Use an existing account
+        select_account_placeholder: Select an account...
+        create_new: Create a new account
+        will_create: "Will create: %{name}"
+        continue: Continue
     configurations:
       update:
         success: Import configured successfully.

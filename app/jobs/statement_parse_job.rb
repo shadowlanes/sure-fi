@@ -10,7 +10,9 @@ class StatementParseJob < ApplicationJob
     response = provider.parse_statement(pdf_base64: pdf_base64, family: import.family)
     raise response.error if response.error.present?
 
-    transactions = response.data
+    result = response.data
+    transactions = result[:transactions]
+    account_info = result[:account] || {}
 
     if transactions.empty?
       import.update!(pdf_status: "extraction_failed", pdf_error: "No transactions found in the statement.")
@@ -19,7 +21,13 @@ class StatementParseJob < ApplicationJob
 
     import.generate_rows_from_pdf(transactions)
     import.sync_mappings
-    import.update!(pdf_status: "extracted")
+    import.update!(
+      pdf_status: "extracted",
+      detected_account_name: account_info[:bank_name],
+      detected_account_number: account_info[:account_number],
+      detected_account_type: account_info[:account_type],
+      detected_currency: account_info[:currency]
+    )
 
     import.clear_pdf_password!
   rescue => e

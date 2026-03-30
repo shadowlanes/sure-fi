@@ -51,21 +51,54 @@ class StatementImportTest < ActiveSupport::TestCase
     assert @import.configured?
   end
 
-  test "requires account when source file is attached" do
+  test "valid without account even when source file is attached" do
     import = StatementImport.create!(family: @family)
     import.source_file.attach(
       io: StringIO.new("%PDF-1.4 test"),
       filename: "statement.pdf",
       content_type: "application/pdf"
     )
-
-    refute import.valid?
-    assert import.errors[:account].any?
+    assert import.valid?
   end
 
-  test "valid without account when no source file attached" do
-    import = StatementImport.new(family: @family)
-    assert import.valid?
+  test "account_confirmed? requires both configured and account" do
+    refute @import.account_confirmed?
+
+    @import.source_file.attach(io: StringIO.new("%PDF-1.4"), filename: "s.pdf", content_type: "application/pdf")
+    @import.update_column(:rows_count, 5)
+    refute @import.account_confirmed?
+
+    @import.update!(account: @account)
+    assert @import.account_confirmed?
+  end
+
+  test "publishable? requires account_confirmed?" do
+    @import.source_file.attach(io: StringIO.new("%PDF-1.4"), filename: "s.pdf", content_type: "application/pdf")
+    @import.generate_rows_from_pdf([{ date: "2025-01-01", amount: "-10", currency: "USD", name: "Test", category: "", notes: "" }])
+    @import.sync_mappings
+
+    refute @import.publishable?, "Should not be publishable without account"
+
+    @import.update!(account: @account)
+    assert @import.publishable?, "Should be publishable with account"
+  end
+
+  test "detected_account_display_name combines detected fields" do
+    @import.update!(detected_account_name: "Emirates NBD", detected_account_number: "4001", detected_currency: "USD", detected_account_type: "checking")
+    assert_equal "Emirates NBD - ending 4001 - USD - Checking", @import.detected_account_display_name
+  end
+
+  test "detected_accountable_type maps credit_card correctly" do
+    @import.update!(detected_account_type: "credit_card")
+    assert_equal "CreditCard", @import.detected_accountable_type
+  end
+
+  test "detected_accountable_type defaults to Depository" do
+    @import.update!(detected_account_type: "checking")
+    assert_equal "Depository", @import.detected_accountable_type
+
+    @import.update!(detected_account_type: nil)
+    assert_equal "Depository", @import.detected_accountable_type
   end
 
   test "statement_import? returns true" do
@@ -111,6 +144,7 @@ class StatementImportTest < ActiveSupport::TestCase
   end
 
   test "generate_rows_from_pdf uses account currency as fallback" do
+    @import.update!(account: @account)
     @account.update!(currency: "AED")
 
     transactions = [
@@ -236,6 +270,7 @@ class StatementImportTest < ActiveSupport::TestCase
   end
 
   test "import! creates transactions from rows" do
+    @import.update!(account: @account)
     @import.generate_rows_from_pdf([
       { date: "2025-12-25", amount: "-99.77", currency: "USD", name: "Unique Statement Test Purchase", category: "", notes: "statement test" }
     ])
