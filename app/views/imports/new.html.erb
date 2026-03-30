@@ -45,7 +45,7 @@
           </li>
         <% end %>
 
-        <% if Current.family.accounts.any? && (params[:type].nil? || params[:type] == "StatementImport") %>
+        <% if params[:type].nil? || params[:type] == "StatementImport" %>
           <li>
             <%= button_to imports_path(import: { type: "StatementImport" }), class: "flex items-center justify-between p-4 group cursor-pointer w-full", data: { turbo: false } do %>
               <div class="flex items-center gap-2">
