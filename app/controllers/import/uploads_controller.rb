@@ -84,6 +84,14 @@ class Import::UploadsController < ApplicationController
         return
       end
 
+      account = Current.family.accounts.find_by(id: upload_params[:account_id])
+      unless account
+        flash.now[:alert] = "Please select an account."
+        render :show, status: :unprocessable_entity
+        return
+      end
+
+      @import.update!(account: account)
       @import.source_file.attach(file)
       @import.parse_later
       redirect_to import_upload_path(@import), notice: "PDF uploaded. Analyzing your statement..."
