@@ -31,7 +31,29 @@ class StatementParseJob < ApplicationJob
 
     def read_pdf_as_base64(import)
       import.source_file.blob.open do |tempfile|
-        Base64.strict_encode64(tempfile.read)
+        pdf_bytes = tempfile.read
+
+        if import.pdf_password.present?
+          pdf_bytes = decrypt_pdf(pdf_bytes, import.pdf_password)
+        end
+
+        Base64.strict_encode64(pdf_bytes)
       end
+    end
+
+    def decrypt_pdf(pdf_bytes, password)
+      input = StringIO.new(pdf_bytes)
+      doc = HexaPDF::Document.new(io: input, decryption_opts: { password: password })
+
+      output = StringIO.new
+      doc.write(output)
+      output.string
+    rescue HexaPDF::EncryptionError
+      raise "This PDF is password-protected. Please provide the correct password."
+    rescue HexaPDF::Error => e
+      if e.message.include?("password") || e.message.include?("decrypt")
+        raise "This PDF is password-protected. Please provide the correct password."
+      end
+      raise
     end
 end
