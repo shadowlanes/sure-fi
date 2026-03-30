@@ -8,7 +8,10 @@ class StatementParseJob < ApplicationJob
     provider = Provider::Registry.get_provider(:openai)
     raise "OpenAI provider is not configured. Please set OPENAI_ACCESS_TOKEN." unless provider
 
-    transactions = provider.parse_statement(pdf_text: pdf_text, family: import.family)
+    response = provider.parse_statement(pdf_text: pdf_text, family: import.family)
+    raise response.error if response.error.present?
+
+    transactions = response.data
 
     if transactions.empty?
       import.update!(pdf_status: "extraction_failed", pdf_error: "No transactions found in the statement.")

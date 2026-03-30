@@ -17,7 +17,7 @@ class StatementParseJobTest < ActiveJob::TestCase
 
     @import.expects(:extract_pdf_text).returns("Sample bank statement text")
     provider = mock("provider")
-    provider.expects(:parse_statement).returns(mock_transactions)
+    provider.expects(:parse_statement).returns(success_response(mock_transactions))
     Provider::Registry.expects(:get_provider).with(:openai).returns(provider)
 
     StatementParseJob.perform_now(@import)
@@ -40,7 +40,7 @@ class StatementParseJobTest < ActiveJob::TestCase
   test "sets extraction_failed when no transactions found" do
     @import.expects(:extract_pdf_text).returns("Some text with no transactions")
     provider = mock("provider")
-    provider.expects(:parse_statement).returns([])
+    provider.expects(:parse_statement).returns(success_response([]))
     Provider::Registry.expects(:get_provider).with(:openai).returns(provider)
 
     StatementParseJob.perform_now(@import)
@@ -80,7 +80,7 @@ class StatementParseJobTest < ActiveJob::TestCase
 
     @import.expects(:extract_pdf_text).returns("Sample text")
     provider = mock("provider")
-    provider.expects(:parse_statement).returns(mock_transactions)
+    provider.expects(:parse_statement).returns(success_response(mock_transactions))
     Provider::Registry.expects(:get_provider).with(:openai).returns(provider)
 
     StatementParseJob.perform_now(@import)
@@ -99,11 +99,34 @@ class StatementParseJobTest < ActiveJob::TestCase
 
     @import.expects(:extract_pdf_text).returns(pdf_text)
     provider = mock("provider")
-    provider.expects(:parse_statement).returns(mock_transactions)
+    provider.expects(:parse_statement).returns(success_response(mock_transactions))
     Provider::Registry.expects(:get_provider).with(:openai).returns(provider)
 
     StatementParseJob.perform_now(@import)
 
     assert_equal pdf_text, @import.reload.pdf_text
   end
+
+  test "handles provider error response" do
+    @import.expects(:extract_pdf_text).returns("Sample text")
+    provider = mock("provider")
+    provider.expects(:parse_statement).returns(error_response("Rate limit exceeded"))
+    Provider::Registry.expects(:get_provider).with(:openai).returns(provider)
+
+    StatementParseJob.perform_now(@import)
+
+    @import.reload
+    assert_equal "extraction_failed", @import.pdf_status
+    assert_includes @import.pdf_error, "Rate limit exceeded"
+  end
+
+  private
+
+    def success_response(data)
+      Provider::Response.new(success?: true, data: data, error: nil)
+    end
+
+    def error_response(message)
+      Provider::Response.new(success?: false, data: nil, error: message)
+    end
 end
