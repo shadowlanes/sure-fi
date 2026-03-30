@@ -193,7 +193,11 @@ class Provider::Openai::StatementParser
     end
 
     def normalize_transactions(parsed)
-      txns = parsed["transactions"] || parsed["results"] || (parsed.is_a?(Array) ? parsed : [])
+      txns = if parsed.is_a?(Array)
+        parsed
+      else
+        parsed["transactions"] || parsed["results"] || []
+      end
 
       txns.filter_map do |txn|
         date = txn["date"].to_s.strip

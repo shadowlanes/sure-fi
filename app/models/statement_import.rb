@@ -15,15 +15,16 @@ class StatementImport < Import
   end
 
   def extract_pdf_text
-    tempfile = source_file.blob.open
     reader_opts = {}
     reader_opts[:password] = pdf_password if pdf_password.present?
-    reader = PDF::Reader.new(tempfile, reader_opts)
 
-    text = reader.pages.map(&:text).join("\n--- PAGE BREAK ---\n")
-    tempfile.close
+    text = nil
+    source_file.blob.open do |tempfile|
+      reader = PDF::Reader.new(tempfile.path, reader_opts)
+      text = reader.pages.map(&:text).join("\n--- PAGE BREAK ---\n")
+    end
 
-    raise "Could not extract text from PDF. The file may be scanned or image-based." if text.strip.blank?
+    raise "Could not extract text from PDF. The file may be scanned or image-based." if text.blank?
 
     text
   end
