@@ -84,19 +84,19 @@ class Provider::Openai < Provider
     end
   end
 
-  def parse_statement(pdf_text:, model: "", family: nil)
+  def parse_statement(pdf_base64:, model: "", family: nil)
     with_provider_response do
       effective_model = model.presence || @default_model
 
       trace = create_langfuse_trace(
         name: "openai.parse_statement",
-        input: { pdf_text_length: pdf_text.length }
+        input: { pdf_size: pdf_base64.length }
       )
 
       result = StatementParser.new(
         client,
         model: effective_model,
-        pdf_text: pdf_text,
+        pdf_base64: pdf_base64,
         custom_provider: custom_provider?,
         langfuse_trace: trace,
         family: family

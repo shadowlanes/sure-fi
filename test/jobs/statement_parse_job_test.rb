@@ -4,7 +4,7 @@ class StatementParseJobTest < ActiveJob::TestCase
   setup do
     @import = imports(:statement)
     @import.source_file.attach(
-      io: StringIO.new("%PDF-1.4 test"),
+      io: StringIO.new("%PDF-1.4 test content"),
       filename: "statement.pdf",
       content_type: "application/pdf"
     )
@@ -15,7 +15,6 @@ class StatementParseJobTest < ActiveJob::TestCase
       { "date" => "2025-01-15", "amount" => "-45.99", "currency" => "USD", "name" => "Grocery Store", "category" => "Groceries", "notes" => "" }
     ]
 
-    @import.expects(:extract_pdf_text).returns("Sample bank statement text")
     provider = mock("provider")
     provider.expects(:parse_statement).returns(success_response(mock_transactions))
     Provider::Registry.expects(:get_provider).with(:openai).returns(provider)
@@ -28,17 +27,18 @@ class StatementParseJobTest < ActiveJob::TestCase
   end
 
   test "sets pdf_status to extraction_failed on error" do
-    @import.expects(:extract_pdf_text).raises(StandardError, "PDF text extraction failed")
+    provider = mock("provider")
+    provider.expects(:parse_statement).raises(StandardError, "API call failed")
+    Provider::Registry.expects(:get_provider).with(:openai).returns(provider)
 
     StatementParseJob.perform_now(@import)
 
     @import.reload
     assert_equal "extraction_failed", @import.pdf_status
-    assert_equal "PDF text extraction failed", @import.pdf_error
+    assert_equal "API call failed", @import.pdf_error
   end
 
   test "sets extraction_failed when no transactions found" do
-    @import.expects(:extract_pdf_text).returns("Some text with no transactions")
     provider = mock("provider")
     provider.expects(:parse_statement).returns(success_response([]))
     Provider::Registry.expects(:get_provider).with(:openai).returns(provider)
@@ -51,7 +51,6 @@ class StatementParseJobTest < ActiveJob::TestCase
   end
 
   test "sets extraction_failed when OpenAI not configured" do
-    @import.expects(:extract_pdf_text).returns("Sample text")
     Provider::Registry.expects(:get_provider).with(:openai).returns(nil)
 
     StatementParseJob.perform_now(@import)
@@ -61,16 +60,6 @@ class StatementParseJobTest < ActiveJob::TestCase
     assert_includes @import.pdf_error, "OpenAI"
   end
 
-  test "handles encrypted PDF with specific error message" do
-    @import.expects(:extract_pdf_text).raises(PDF::Reader::EncryptedPDFError)
-
-    StatementParseJob.perform_now(@import)
-
-    @import.reload
-    assert_equal "extraction_failed", @import.pdf_status
-    assert_includes @import.pdf_error, "password-protected"
-  end
-
   test "clears password after successful extraction" do
     @import.update!(pdf_password: "secret123")
 
@@ -78,7 +67,6 @@ class StatementParseJobTest < ActiveJob::TestCase
       { "date" => "2025-01-15", "amount" => "-45.99", "currency" => "USD", "name" => "Grocery", "category" => "", "notes" => "" }
     ]
 
-    @import.expects(:extract_pdf_text).returns("Sample text")
     provider = mock("provider")
     provider.expects(:parse_statement).returns(success_response(mock_transactions))
     Provider::Registry.expects(:get_provider).with(:openai).returns(provider)
@@ -90,25 +78,18 @@ class StatementParseJobTest < ActiveJob::TestCase
     assert_nil @import.pdf_password
   end
 
-  test "stores pdf_text for debugging" do
-    pdf_text = "Bank Statement\nDate Amount Description\n2025-01-15 -45.99 Grocery"
-
-    mock_transactions = [
-      { "date" => "2025-01-15", "amount" => "-45.99", "currency" => "USD", "name" => "Grocery", "category" => "", "notes" => "" }
-    ]
-
-    @import.expects(:extract_pdf_text).returns(pdf_text)
+  test "sends PDF as base64 to provider" do
     provider = mock("provider")
-    provider.expects(:parse_statement).returns(success_response(mock_transactions))
+    provider.expects(:parse_statement).with { |args|
+      # Verify base64 is passed, not extracted text
+      args[:pdf_base64].present? && Base64.strict_decode64(args[:pdf_base64]).include?("%PDF-1.4")
+    }.returns(success_response([]))
     Provider::Registry.expects(:get_provider).with(:openai).returns(provider)
 
     StatementParseJob.perform_now(@import)
-
-    assert_equal pdf_text, @import.reload.pdf_text
   end
 
   test "handles provider error response" do
-    @import.expects(:extract_pdf_text).returns("Sample text")
     provider = mock("provider")
     provider.expects(:parse_statement).returns(error_response("Rate limit exceeded"))
     Provider::Registry.expects(:get_provider).with(:openai).returns(provider)
