@@ -15,6 +15,7 @@ class Import::AccountReviewsController < ApplicationController
     end
 
     @matching_accounts = @import.find_matching_accounts
+    @best_match = @import.best_matching_account
   end
 
   def update
@@ -68,6 +69,10 @@ class Import::AccountReviewsController < ApplicationController
     def build_account_name
       parts = []
       parts << @import.detected_account_name if @import.detected_account_name.present?
+      if @import.detected_account_number.present?
+        last_digits = @import.detected_account_number.last(3)
+        parts << "***#{last_digits}"
+      end
       parts << @import.detected_account_type&.titleize if @import.detected_account_type.present?
       parts << @import.detected_currency if @import.detected_currency.present?
       name = parts.join(" ")

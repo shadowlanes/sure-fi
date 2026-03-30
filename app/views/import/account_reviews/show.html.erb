@@ -31,17 +31,20 @@
   <% end %>
 
   <%= styled_form_with model: @import, scope: :import, url: import_account_review_path(@import), method: :patch, class: "space-y-4" do |form| %>
-    <% if @matching_accounts.any? || @import.family.accounts.visible.any? %>
+    <% if @import.family.accounts.visible.any? %>
       <div class="space-y-3">
         <label class="flex items-center gap-2 cursor-pointer">
-          <input type="radio" name="import[account_action]" value="existing" checked class="accent-primary">
+          <input type="radio" name="import[account_action]" value="existing" <%= "checked" if @best_match.present? %> class="accent-primary">
           <span class="text-sm font-medium text-primary"><%= t("import.account_reviews.show.use_existing") %></span>
+          <% if @best_match.present? %>
+            <span class="text-xs text-teal-500 font-medium"><%= t("import.account_reviews.show.auto_detected") %></span>
+          <% end %>
         </label>
 
         <div class="ml-6">
           <%= form.select :account_id,
                 @import.family.accounts.visible.order(:name).pluck(:name, :id),
-                { include_blank: t("import.account_reviews.show.select_account_placeholder"), selected: @matching_accounts.first&.id },
+                { include_blank: t("import.account_reviews.show.select_account_placeholder"), selected: @best_match&.id },
                 { class: "w-full" } %>
         </div>
       </div>
@@ -51,7 +54,7 @@
 
     <div class="space-y-3">
       <label class="flex items-center gap-2 cursor-pointer">
-        <input type="radio" name="import[account_action]" value="create" <%= "checked" unless @import.family.accounts.visible.any? %>>
+        <input type="radio" name="import[account_action]" value="create" <%= "checked" unless @best_match.present? || !@import.family.accounts.visible.any? %>>
         <span class="text-sm font-medium text-primary"><%= t("import.account_reviews.show.create_new") %></span>
       </label>
 

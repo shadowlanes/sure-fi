@@ -20,10 +20,12 @@ class StatementImport < Import
 
   def detected_account_display_name
     parts = [ detected_account_name ]
-    parts << "ending #{detected_account_number}" if detected_account_number.present?
-    parts << detected_currency if detected_currency.present?
+    if detected_account_number.present?
+      parts << "***#{detected_account_number.last(3)}"
+    end
     parts << detected_account_type&.titleize if detected_account_type.present?
-    parts.compact.join(" - ")
+    parts << detected_currency if detected_currency.present?
+    parts.compact.join(" ")
   end
 
   def detected_accountable_type
@@ -39,12 +41,21 @@ class StatementImport < Import
     return family.accounts.none unless detected_account_number.present? || detected_account_name.present?
 
     scope = family.accounts.visible
+
+    # Try matching by last 3 digits of account number (what's stored in name), then by bank name
+    matches = scope.none
     if detected_account_number.present?
-      # Match on account name containing the account number
-      scope.where("name ILIKE ?", "%#{detected_account_number}%")
-    else
-      scope.where("name ILIKE ?", "%#{detected_account_name}%")
+      last_digits = detected_account_number.last(3)
+      matches = scope.where("name ILIKE ? OR name ILIKE ?", "%#{detected_account_number}%", "%***#{last_digits}%")
     end
+    if matches.empty? && detected_account_name.present?
+      matches = scope.where("name ILIKE ?", "%#{detected_account_name}%")
+    end
+    matches
+  end
+
+  def best_matching_account
+    find_matching_accounts.first
   end
 
   def generate_rows_from_pdf(extracted_transactions)

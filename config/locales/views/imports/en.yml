@@ -22,6 +22,7 @@ en:
           one: "%{count} transaction found"
           other: "%{count} transactions found"
         use_existing: Use an existing account
+        auto_detected: "(auto-detected)"
         select_account_placeholder: Select an account...
         create_new: Create a new account
         will_create: "Will create: %{name}"

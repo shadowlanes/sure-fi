@@ -83,9 +83,25 @@ class StatementImportTest < ActiveSupport::TestCase
     assert @import.publishable?, "Should be publishable with account"
   end
 
-  test "detected_account_display_name combines detected fields" do
+  test "detected_account_display_name combines detected fields with last 3 digits" do
     @import.update!(detected_account_name: "Emirates NBD", detected_account_number: "4001", detected_currency: "USD", detected_account_type: "checking")
-    assert_equal "Emirates NBD - ending 4001 - USD - Checking", @import.detected_account_display_name
+    assert_equal "Emirates NBD ***001 Checking USD", @import.detected_account_display_name
+  end
+
+  test "best_matching_account finds account by number in name" do
+    family = @import.family
+    account = family.accounts.create!(name: "Emirates NBD ***001 Checking", currency: "USD", balance: 0, accountable: Depository.new)
+    @import.update!(detected_account_number: "4001")
+
+    assert_equal account, @import.best_matching_account
+  end
+
+  test "best_matching_account finds account by bank name" do
+    family = @import.family
+    account = family.accounts.create!(name: "Emirates NBD Savings", currency: "AED", balance: 0, accountable: Depository.new)
+    @import.update!(detected_account_number: nil, detected_account_name: "Emirates NBD")
+
+    assert_equal account, @import.best_matching_account
   end
 
   test "detected_accountable_type maps credit_card correctly" do
