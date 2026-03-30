@@ -1,7 +1,7 @@
 import { Controller } from "@hotwired/stimulus"
 
 export default class extends Controller {
-  static targets = ["input", "fileName", "uploadArea", "uploadText"]
+  static targets = ["input", "fileName", "uploadArea", "uploadText", "submit"]
 
   connect() {
     if (this.hasInputTarget) {
@@ -48,8 +48,16 @@ export default class extends Controller {
       if (this.hasUploadTextTarget) {
         this.uploadTextTarget.classList.add("hidden")
       }
-      
-    
+
+      if (this.hasSubmitTarget) {
+        this.submitTarget.disabled = false
+      }
+    }
+  }
+
+  enableSubmit() {
+    if (this.hasSubmitTarget && this.hasInputTarget && this.inputTarget.files.length > 0) {
+      this.submitTarget.disabled = false
     }
   }
   

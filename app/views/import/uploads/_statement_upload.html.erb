@@ -102,11 +102,12 @@
           <%= form.file_field :pdf_file,
                 accept: "application/pdf",
                 class: "hidden",
-                "data-file-upload-target": "input" %>
+                "data-file-upload-target": "input",
+                "data-action": "change->file-upload#enableSubmit" %>
         </div>
       </div>
 
-      <%= form.submit t("import.uploads.show.statement_submit"), class: "btn btn--primary w-full" %>
+      <%= form.submit t("import.uploads.show.statement_submit"), class: "btn btn--primary w-full", disabled: true, "data-file-upload-target": "submit" %>
     <% end %>
   <% end %>
 </div>
