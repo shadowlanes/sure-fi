@@ -105,7 +105,8 @@ class StatementImport < Import
 
   def import!
     transaction do
-      mappings.each(&:create_mappable!)
+      sync_mappings
+      mappings.reload.each(&:create_mappable!)
 
       new_transactions = []
       updated_entries = []
