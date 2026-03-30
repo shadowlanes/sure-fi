@@ -39,14 +39,28 @@ class StatementImportsControllerTest < ActionDispatch::IntegrationTest
     assert_response :success
   end
 
-  test "redirects to clean when extraction complete" do
+  test "redirects to account review when extraction complete and no account" do
     import = imports(:statement)
     import.source_file.attach(
       io: StringIO.new("%PDF-1.4 test"),
       filename: "statement.pdf",
       content_type: "application/pdf"
     )
-    import.update!(pdf_status: "extracted")
+    import.update!(pdf_status: "extracted", account: nil)
+    import.update_column(:rows_count, 1)
+
+    get import_upload_url(import)
+    assert_redirected_to import_account_review_url(import)
+  end
+
+  test "redirects to clean when extraction complete and account set" do
+    import = imports(:statement)
+    import.source_file.attach(
+      io: StringIO.new("%PDF-1.4 test"),
+      filename: "statement.pdf",
+      content_type: "application/pdf"
+    )
+    import.update!(pdf_status: "extracted", account: @account)
     import.update_column(:rows_count, 1)
 
     get import_upload_url(import)
@@ -109,6 +123,58 @@ class StatementImportsControllerTest < ActionDispatch::IntegrationTest
 
     get import_upload_url(import)
     assert_response :success
+  end
+
+  test "shows account review page" do
+    import = imports(:statement)
+    import.source_file.attach(io: StringIO.new("%PDF-1.4"), filename: "s.pdf", content_type: "application/pdf")
+    import.update!(pdf_status: "extracted", detected_account_name: "Emirates NBD", detected_account_type: "checking", detected_currency: "USD")
+    import.update_column(:rows_count, 5)
+
+    get import_account_review_url(import)
+    assert_response :success
+  end
+
+  test "account review assigns existing account" do
+    import = imports(:statement)
+    import.source_file.attach(io: StringIO.new("%PDF-1.4"), filename: "s.pdf", content_type: "application/pdf")
+    import.update!(pdf_status: "extracted")
+    import.update_column(:rows_count, 5)
+
+    patch import_account_review_url(import), params: {
+      import: { account_action: "existing", account_id: @account.id }
+    }
+
+    assert_equal @account, import.reload.account
+    assert_redirected_to import_clean_url(import)
+  end
+
+  test "account review creates new account" do
+    import = imports(:statement)
+    import.source_file.attach(io: StringIO.new("%PDF-1.4"), filename: "s.pdf", content_type: "application/pdf")
+    import.update!(pdf_status: "extracted", detected_account_name: "HDFC Bank", detected_account_type: "checking", detected_currency: "INR")
+    import.update_column(:rows_count, 5)
+
+    assert_difference "Account.count", 1 do
+      patch import_account_review_url(import), params: {
+        import: { account_action: "create" }
+      }
+    end
+
+    import.reload
+    assert_not_nil import.account
+    assert_equal "INR", import.account.currency
+    assert_redirected_to import_clean_url(import)
+  end
+
+  test "show redirects to account review when no account set" do
+    import = imports(:statement)
+    import.source_file.attach(io: StringIO.new("%PDF-1.4"), filename: "s.pdf", content_type: "application/pdf")
+    import.update!(pdf_status: "extracted", account: nil)
+    import.update_column(:rows_count, 5)
+
+    get import_url(import)
+    assert_redirected_to import_account_review_url(import)
   end
 
   test "configuration page redirects to clean for statement import" do

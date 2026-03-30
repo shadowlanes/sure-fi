@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.2].define(version: 2026_03_26_165854) do
+ActiveRecord::Schema[7.2].define(version: 2026_03_30_090100) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pgcrypto"
   enable_extension "plpgsql"
@@ -614,6 +614,10 @@ ActiveRecord::Schema[7.2].define(version: 2026_03_26_165854) do
     t.text "pdf_error"
     t.text "pdf_text"
     t.string "pdf_password"
+    t.string "detected_account_name"
+    t.string "detected_account_number"
+    t.string "detected_account_type"
+    t.string "detected_currency"
     t.index ["family_id"], name: "index_imports_on_family_id"
   end
 

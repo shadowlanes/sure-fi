@@ -4,7 +4,7 @@ class StatementImport < Import
 
   after_create :set_defaults
 
-  validate :account_required_for_publish
+  validate :account_required_for_import
 
   def uploaded?
     source_file.attached?
@@ -12,6 +12,39 @@ class StatementImport < Import
 
   def configured?
     uploaded? && rows_count > 0
+  end
+
+  def account_confirmed?
+    configured? && account.present?
+  end
+
+  def detected_account_display_name
+    parts = [ detected_account_name ]
+    parts << "ending #{detected_account_number}" if detected_account_number.present?
+    parts << detected_currency if detected_currency.present?
+    parts << detected_account_type&.titleize if detected_account_type.present?
+    parts.compact.join(" - ")
+  end
+
+  def detected_accountable_type
+    case detected_account_type&.downcase
+    when "credit_card" then "CreditCard"
+    when "savings" then "Depository"
+    when "checking" then "Depository"
+    else "Depository"
+    end
+  end
+
+  def find_matching_accounts
+    return family.accounts.none unless detected_account_number.present? || detected_account_name.present?
+
+    scope = family.accounts.visible
+    if detected_account_number.present?
+      # Match on account name containing the account number
+      scope.where("name ILIKE ?", "%#{detected_account_number}%")
+    else
+      scope.where("name ILIKE ?", "%#{detected_account_name}%")
+    end
   end
 
   def generate_rows_from_pdf(extracted_transactions)
@@ -60,6 +93,10 @@ class StatementImport < Import
 
   def column_keys
     %i[date amount name currency category tags notes]
+  end
+
+  def publishable?
+    account_confirmed? && super
   end
 
   def mapping_steps
@@ -123,9 +160,9 @@ class StatementImport < Import
   end
 
   private
-    def account_required_for_publish
-      if source_file.attached? && account.nil?
-        errors.add(:account, "is required for statement imports")
+    def account_required_for_import
+      if rows_count > 0 && account.nil? && status == "importing"
+        errors.add(:account, "must be selected before importing")
       end
     end
 

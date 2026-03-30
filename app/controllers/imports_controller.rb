@@ -48,6 +48,8 @@ class ImportsController < ApplicationController
   def show
     if @import.is_a?(StatementImport) && @import.pdf_status.in?(%w[extracting extraction_failed])
       redirect_to import_upload_path(@import)
+    elsif @import.is_a?(StatementImport) && !@import.account_confirmed? && @import.configured?
+      redirect_to import_account_review_path(@import)
     elsif !@import.uploaded?
       redirect_to import_upload_path(@import), alert: "Please finalize your file upload."
     elsif !@import.publishable?

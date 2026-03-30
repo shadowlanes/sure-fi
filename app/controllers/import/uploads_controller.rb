@@ -5,7 +5,11 @@ class Import::UploadsController < ApplicationController
 
   def show
     if @import.is_a?(StatementImport) && @import.pdf_status == "extracted"
-      redirect_to import_clean_path(@import)
+      if @import.account_confirmed?
+        redirect_to import_clean_path(@import)
+      else
+        redirect_to import_account_review_path(@import)
+      end
     end
   end
 
@@ -84,14 +88,6 @@ class Import::UploadsController < ApplicationController
         return
       end
 
-      account = Current.family.accounts.find_by(id: upload_params[:account_id])
-      unless account
-        flash.now[:alert] = "Please select an account."
-        render :show, status: :unprocessable_entity
-        return
-      end
-
-      @import.update!(account: account)
       @import.source_file.attach(file)
       @import.parse_later
       redirect_to import_upload_path(@import), notice: "PDF uploaded. Analyzing your statement..."

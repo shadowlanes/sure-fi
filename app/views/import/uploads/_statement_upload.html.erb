@@ -64,19 +64,20 @@
       <% end %>
     </div>
 
+  <% elsif import.pdf_status == "extracted" %>
+    <%# Redirect handled by controller, but show link just in case %>
+    <div class="text-center py-12">
+      <p class="text-secondary"><%= link_to "Continue to account selection", import_confirm_path(import), class: "text-primary underline" %></p>
+    </div>
+
   <% else %>
-    <%# Initial upload state %>
+    <%# Initial upload state -- no account selector needed %>
     <div class="text-center space-y-2">
       <h1 class="text-3xl text-primary font-medium"><%= t("import.uploads.show.statement_title") %></h1>
       <p class="text-secondary text-sm"><%= t("import.uploads.show.statement_description") %></p>
     </div>
 
     <%= styled_form_with model: import, scope: :import, url: import_upload_path(import), multipart: true, class: "space-y-4" do |form| %>
-      <%= form.select :account_id,
-            import.family.accounts.visible.pluck(:name, :id),
-            { label: t("import.uploads.show.statement_account_label"), selected: import.account_id },
-            { required: true } %>
-
       <div class="flex flex-col items-center justify-center w-full h-64 border border-secondary border-dashed rounded-xl cursor-pointer"
            data-controller="file-upload"
            data-action="click->file-upload#triggerFileInput"

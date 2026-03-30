@@ -16,7 +16,6 @@ account:
 statement:
   family: dylan_family
   type: StatementImport
-  account: depository
   status: pending
   signage_convention: inflows_positive
   date_format: "%Y-%m-%d"

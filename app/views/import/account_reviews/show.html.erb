@@ -1,0 +1,69 @@
+<%= content_for :header_nav do %>
+  <%= render "imports/nav", import: @import %>
+<% end %>
+
+<%= content_for :previous_path, import_upload_path(@import) %>
+
+<div class="space-y-6 mx-auto max-w-md">
+  <div class="text-center space-y-2">
+    <h1 class="text-3xl text-primary font-medium"><%= t("import.account_reviews.show.title") %></h1>
+    <p class="text-secondary text-sm"><%= t("import.account_reviews.show.description") %></p>
+  </div>
+
+  <% if @import.detected_account_name.present? %>
+    <div class="shadow-border-xs rounded-lg p-4 space-y-2">
+      <h3 class="text-sm font-medium flex items-center gap-2">
+        <span class="text-teal-500">
+          <%= icon "scan-search", color: "current" %>
+        </span>
+        <%= t("import.account_reviews.show.detected_heading") %>
+      </h3>
+      <div class="text-sm text-secondary space-y-1">
+        <p><strong><%= t("import.account_reviews.show.bank_label") %>:</strong> <%= @import.detected_account_name %></p>
+        <% if @import.detected_account_number.present? %>
+          <p><strong><%= t("import.account_reviews.show.account_number_label") %>:</strong> <%= @import.detected_account_number %></p>
+        <% end %>
+        <p><strong><%= t("import.account_reviews.show.type_label") %>:</strong> <%= @import.detected_account_type&.titleize || "Unknown" %></p>
+        <p><strong><%= t("import.account_reviews.show.currency_label") %>:</strong> <%= @import.detected_currency || "Unknown" %></p>
+        <p class="text-xs text-subdued"><%= t("import.account_reviews.show.transactions_found", count: @import.rows_count) %></p>
+      </div>
+    </div>
+  <% end %>
+
+  <%= styled_form_with model: @import, scope: :import, url: import_account_review_path(@import), method: :patch, class: "space-y-4" do |form| %>
+    <% if @matching_accounts.any? || @import.family.accounts.visible.any? %>
+      <div class="space-y-3">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="radio" name="import[account_action]" value="existing" checked class="accent-primary">
+          <span class="text-sm font-medium text-primary"><%= t("import.account_reviews.show.use_existing") %></span>
+        </label>
+
+        <div class="ml-6">
+          <%= form.select :account_id,
+                @import.family.accounts.visible.order(:name).pluck(:name, :id),
+                { include_blank: t("import.account_reviews.show.select_account_placeholder"), selected: @matching_accounts.first&.id },
+                { class: "w-full" } %>
+        </div>
+      </div>
+
+      <%= render "shared/ruler" %>
+    <% end %>
+
+    <div class="space-y-3">
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="radio" name="import[account_action]" value="create" <%= "checked" unless @import.family.accounts.visible.any? %>>
+        <span class="text-sm font-medium text-primary"><%= t("import.account_reviews.show.create_new") %></span>
+      </label>
+
+      <% if @import.detected_account_name.present? %>
+        <p class="ml-6 text-sm text-secondary">
+          <%= t("import.account_reviews.show.will_create", name: @import.detected_account_display_name) %>
+        </p>
+      <% end %>
+    </div>
+
+    <div class="pt-2">
+      <%= form.submit t("import.account_reviews.show.continue"), class: "btn btn--primary w-full" %>
+    </div>
+  <% end %>
+</div>
