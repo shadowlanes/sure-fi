@@ -77,9 +77,8 @@
       <p class="text-secondary text-sm"><%= t("import.uploads.show.statement_description") %></p>
     </div>
 
-    <%= styled_form_with model: import, scope: :import, url: import_upload_path(import), multipart: true, class: "space-y-4" do |form| %>
+    <%= styled_form_with model: import, scope: :import, url: import_upload_path(import), multipart: true, class: "space-y-4", data: { controller: "file-upload" } do |form| %>
       <div class="flex flex-col items-center justify-center w-full h-64 border border-secondary border-dashed rounded-xl cursor-pointer"
-           data-controller="file-upload"
            data-action="click->file-upload#triggerFileInput"
            data-file-upload-target="uploadArea">
         <div class="flex flex-col items-center justify-center pt-5 pb-6">
@@ -107,7 +106,10 @@
         </div>
       </div>
 
-      <%= form.submit t("import.uploads.show.statement_submit"), class: "btn btn--primary w-full", disabled: true, "data-file-upload-target": "submit" %>
+      <button type="submit" disabled data-file-upload-target="submit"
+              class="font-medium whitespace-nowrap inline-flex items-center gap-1 rounded-lg justify-center px-3 py-2 text-sm w-full text-inverse bg-inverse hover:bg-inverse-hover disabled:opacity-50 disabled:cursor-not-allowed">
+        <%= t("import.uploads.show.statement_submit") %>
+      </button>
     <% end %>
   <% end %>
 </div>
