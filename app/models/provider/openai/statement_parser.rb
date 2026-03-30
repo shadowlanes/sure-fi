@@ -1,64 +1,43 @@
 class Provider::Openai::StatementParser
   include Provider::Openai::Concerns::UsageRecorder
 
-  MAX_TEXT_LENGTH = 30_000
+  attr_reader :client, :model, :pdf_base64, :custom_provider, :langfuse_trace, :family
 
-  attr_reader :client, :model, :pdf_text, :custom_provider, :langfuse_trace, :family
-
-  def initialize(client, model:, pdf_text:, custom_provider: false, langfuse_trace: nil, family: nil)
+  def initialize(client, model:, pdf_base64:, custom_provider: false, langfuse_trace: nil, family: nil)
     @client = client
     @model = model
-    @pdf_text = pdf_text
+    @pdf_base64 = pdf_base64
     @custom_provider = custom_provider
     @langfuse_trace = langfuse_trace
     @family = family
   end
 
   def parse_statement
-    if pdf_text.length <= MAX_TEXT_LENGTH
-      parse_chunk(pdf_text)
+    if custom_provider
+      parse_with_vision_generic
     else
-      parse_in_chunks
+      parse_with_vision_native
     end
   end
 
   private
 
-    def parse_in_chunks
-      pages = pdf_text.split("--- PAGE BREAK ---")
-      chunks = []
-      current_chunk = ""
-
-      pages.each do |page|
-        if current_chunk.length + page.length > MAX_TEXT_LENGTH && current_chunk.present?
-          chunks << current_chunk
-          current_chunk = page
-        else
-          current_chunk += "\n--- PAGE BREAK ---\n" if current_chunk.present?
-          current_chunk += page
-        end
-      end
-      chunks << current_chunk if current_chunk.present?
-
-      chunks.flat_map { |chunk| parse_chunk(chunk) }
-    end
-
-    def parse_chunk(text)
-      if custom_provider
-        parse_chunk_generic(text)
-      else
-        parse_chunk_native(text)
-      end
-    end
-
-    def parse_chunk_native(text)
+    def parse_with_vision_native(text)
       span = langfuse_trace&.span(name: "parse_statement_api_call", input: {
-        model: model, text_length: text.length
+        model: model, pdf_size: pdf_base64.length
       })
 
       response = client.responses.create(parameters: {
         model: model,
-        input: [ { role: "user", content: user_message(text) } ],
+        input: [
+          {
+            role: "user",
+            content: [
+              { type: "input_file", file_data: "data:application/pdf;base64,#{pdf_base64}" },
+              { type: "input_text", text: "Extract all transactions from this bank statement." }
+            ]
+          }
+        ],
         instructions: instructions,
         text: {
           format: {
@@ -76,7 +55,7 @@ class Provider::Openai::StatementParser
         model,
         response.dig("usage"),
         operation: "parse_statement",
-        metadata: { text_length: text.length, transaction_count: transactions.size }
+        metadata: { pdf_size: pdf_base64.length, transaction_count: transactions.size }
       )
 
       span&.end(output: { transaction_count: transactions.size }, usage: response.dig("usage"))
@@ -86,31 +65,47 @@ class Provider::Openai::StatementParser
       raise
     end
 
-    def parse_chunk_generic(text)
+    def parse_with_vision_generic
       span = langfuse_trace&.span(name: "parse_statement_api_call", input: {
-        model: model, text_length: text.length
+        model: model, pdf_size: pdf_base64.length
       })
 
       params = {
         model: model,
         messages: [
           { role: "system", content: instructions },
-          { role: "user", content: user_message(text) }
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: { url: "data:application/pdf;base64,#{pdf_base64}" }
+              },
+              {
+                type: "text",
+                text: "Extract all transactions from this bank statement."
+              }
+            ]
+          }
         ],
         response_format: { type: "json_object" }
       }
 
+      Rails.logger.info("StatementParser sending PDF (#{pdf_base64.length} base64 chars) to LLM model #{model}")
+
       response = client.chat(parameters: params)
 
       raw = response.dig("choices", 0, "message", "content")
+      Rails.logger.info("StatementParser raw LLM response (first 2000 chars): #{raw.to_s[0..2000]}")
       parsed = parse_json_flexibly(raw)
       transactions = normalize_transactions(parsed)
+      Rails.logger.info("StatementParser extracted #{transactions.size} transactions")
 
       record_usage(
         model,
         response.dig("usage"),
         operation: "parse_statement",
-        metadata: { text_length: text.length, transaction_count: transactions.size }
+        metadata: { pdf_size: pdf_base64.length, transaction_count: transactions.size }
       )
 
       span&.end(output: { transaction_count: transactions.size }, usage: response.dig("usage"))
@@ -123,7 +118,7 @@ class Provider::Openai::StatementParser
     def instructions
       <<~INSTRUCTIONS.strip
         You are a financial document parser specializing in bank statements. Your job is to extract
-        every transaction from the provided bank statement text.
+        every transaction from the provided bank statement PDF.
 
         For each transaction, return:
         - date: in ISO 8601 format (YYYY-MM-DD)
@@ -136,22 +131,15 @@ class Provider::Openai::StatementParser
         - notes: reference numbers, check numbers, or other details. Empty string if none.
 
         Rules:
-        - Extract EVERY transaction line. Do not skip any.
+        - Extract EVERY transaction line from ALL pages. Do not skip any.
         - Do NOT include opening balances, closing balances, summary totals, or interest accrual summaries as transactions
           UNLESS they represent an actual charge or credit to the account.
         - Dates must be valid calendar dates within the statement period.
         - If the statement shows transactions in multiple currencies, use the correct currency for each.
         - If all transactions share one currency, use the currency from the statement header or account info.
+        - The statement may be bilingual (e.g., English and Arabic). Extract data from whichever language has the transaction details.
         - Return valid JSON only. No explanations.
       INSTRUCTIONS
-    end
-
-    def user_message(text)
-      <<~MESSAGE.strip
-        Extract all transactions from this bank statement:
-
-        #{text}
-      MESSAGE
     end
 
     def json_schema

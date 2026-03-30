@@ -2,13 +2,12 @@ class StatementParseJob < ApplicationJob
   queue_as :high_priority
 
   def perform(import)
-    pdf_text = import.extract_pdf_text
-    import.update!(pdf_text: pdf_text)
+    pdf_base64 = read_pdf_as_base64(import)
 
     provider = Provider::Registry.get_provider(:openai)
     raise "OpenAI provider is not configured. Please set OPENAI_ACCESS_TOKEN." unless provider
 
-    response = provider.parse_statement(pdf_text: pdf_text, family: import.family)
+    response = provider.parse_statement(pdf_base64: pdf_base64, family: import.family)
     raise response.error if response.error.present?
 
     transactions = response.data
@@ -23,10 +22,16 @@ class StatementParseJob < ApplicationJob
     import.update!(pdf_status: "extracted")
 
     import.clear_pdf_password!
-  rescue PDF::Reader::EncryptedPDFError
-    import.update!(pdf_status: "extraction_failed", pdf_error: "This PDF is password-protected. Please provide the password.")
   rescue => e
     Rails.logger.error("StatementParseJob failed for import #{import.id}: #{e.message}")
     import.update!(pdf_status: "extraction_failed", pdf_error: e.message)
   end
+
+  private
+
+    def read_pdf_as_base64(import)
+      import.source_file.blob.open do |tempfile|
+        Base64.strict_encode64(tempfile.read)
+      end
+    end
 end
