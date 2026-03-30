@@ -179,6 +179,7 @@ Sidekiq handles asynchronous tasks:
 - Environment variables via `.env` files
 - Lookbook for component development (`/lookbook`)
 - Letter Opener for email preview in development
+- **Commit messages must use [Conventional Commits](https://www.conventionalcommits.org/) format** (e.g., `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`)
 
 ## Project Conventions
 
