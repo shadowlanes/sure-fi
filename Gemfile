@@ -97,6 +97,9 @@ gem "flipper-active_record"
 
 # AI
 gem "ruby-openai"
+
+# PDF decryption (for password-protected bank statements)
+gem "hexapdf"
 gem "langfuse-ruby", "~> 0.1.4", require: "langfuse"
 
 group :development, :test do

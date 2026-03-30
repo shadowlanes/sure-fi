@@ -67,6 +67,9 @@ class StatementParseJobTest < ActiveJob::TestCase
       { "date" => "2025-01-15", "amount" => "-45.99", "currency" => "USD", "name" => "Grocery", "category" => "", "notes" => "" }
     ]
 
+    # Stub decryption since our test PDF isn't actually encrypted
+    StatementParseJob.any_instance.stubs(:decrypt_pdf).returns("%PDF-1.4 decrypted")
+
     provider = mock("provider")
     provider.expects(:parse_statement).returns(success_response(mock_transactions))
     Provider::Registry.expects(:get_provider).with(:openai).returns(provider)
@@ -76,6 +79,18 @@ class StatementParseJobTest < ActiveJob::TestCase
     @import.reload
     assert_equal "extracted", @import.pdf_status
     assert_nil @import.pdf_password
+  end
+
+  test "reports password error when decryption fails" do
+    @import.update!(pdf_password: "wrong_password")
+
+    StatementParseJob.any_instance.stubs(:decrypt_pdf).raises("This PDF is password-protected. Please provide the correct password.")
+
+    StatementParseJob.perform_now(@import)
+
+    @import.reload
+    assert_equal "extraction_failed", @import.pdf_status
+    assert_includes @import.pdf_error, "password"
   end
 
   test "sends PDF as base64 to provider" do
